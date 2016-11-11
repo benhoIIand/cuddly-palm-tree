@@ -17,8 +17,10 @@
   },
   "homepage": "https://github.com/hollandben/cuddly-palm-tree#readme",
   "dependencies": {
+    "es6-promise-series": "^0.2.2",
+    "glob": "^7.1.1",
     "node-wol": "^0.1.1",
-    "ssh-exec": "^2.0.0",
-    "yargs": "^6.3.0"
+    "request": "^2.78.0",
+    "ssh-exec": "^2.0.0"
   }
 }
