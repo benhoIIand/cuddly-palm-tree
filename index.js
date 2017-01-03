@@ -1,21 +1,57 @@
-var series = require('es6-promise-series');
-var fs = require('fs');
-var glob = require('glob');
-var request = require('request');
-var exec = require('ssh-exec');
-var wol = require('node-wol');
+const glob = require('glob');
+const request = require('request');
+const wol = require('node-wol');
 
-var CONVERTER_FILE = 'C:/mp4_converter/manual.py';
-var SSH_CREDENTIALS = 'admin@nas';
-var PC_MAC_ADDRESS = '50-E5-49-EF-98-39';
-var PROCESSING_FOLDER = 'C:/Users/ben/Projects/cuddly-palm-tree/temp/ready';
-var DEST_FOLDER = 'C:/Users/ben/Projects/cuddly-palm-tree/temp/done';
-var WEBHOOK_URL = 'https://hooks.slack.com/services/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';
+const SERVER_HOST = 'http://192.168.0.2:3210';
+const PC_MAC_ADDRESS = '50-E5-49-EF-98-39';
+const ROOT_DIR = 'C:/Users/ben/Projects/cuddly-palm-tree';
+const PROCESSING_FOLDER = `${ROOT_DIR}/temp/ready`;
+const DEST_FOLDER = `${ROOT_DIR}/temp/done`;
 
 getFilesToProcess()
-    .then(files => series(files.map(processFile)))
-    .then(console.log)
-    .catch(console.error);
+    .then(sendProcessRequest)
+    .then(response => {
+        const queueId = response.body.id;
+        console.info('Queue ID:', queueId);
+
+        return getQueueStatus(queueId);
+    })
+    .catch(error => {
+        throw new Error(error);
+    });
+
+function getQueueStatus(id) {
+    return new Promise((resolve, reject) => {
+        const poll = setInterval(() => {
+            request.get(`${SERVER_HOST}/queue/${id}`, (error, response, body) => {
+                if (error) {
+                    reject(error);
+                }
+
+                console.log(body);
+
+                if (body.completed) {
+                    clearInterval(poll);
+                    resolve();
+                }
+            });
+        }, 3000);
+    });
+}
+
+function wakeUpServer(file) {
+    return new Promise((resolve, reject) => {
+        console.info('Waking up PC');
+
+        wol.wake(PC_MAC_ADDRESS, function(error) {
+            if (error) {
+                reject(error);
+            } else {
+                resolve();
+            }
+        });
+    });
+}
 
 function getFilesToProcess() {
     return new Promise((resolve, reject) => {
@@ -29,39 +65,18 @@ function getFilesToProcess() {
     });
 }
 
-function processFile(file) {
-    var command = `python ${CONVERTER_FILE} -a -i "${file}" -m "${DEST_FOLDER}"`;
-
+function sendProcessRequest(files) {
     return new Promise((resolve, reject) => {
-        console.info('Waking up PC');
-
-        wol.wake(PC_MAC_ADDRESS, function(error) {
+        request.post(`${SERVER_HOST}/process`, {
+            json: {
+                files: files.map(x => x.replace(ROOT_DIR, ''))
+            }
+        }, (error, response, body) => {
             if (error) {
                 reject(error);
-            } else {
-                console.info(`Attempting to transcode ${file}`);
-                console.info('Command:', command);
-
-                setTimeout(() => {
-                    resolve(file)
-                }, 5000);
-
-                exec(command, SSH_CREDENTIALS, function() {
-                    resolve(file);
-                });
             }
-        });
-    });
-}
 
-function sendNotification(text) {
-    request.post(WEBHOOK_URL, {
-        json: {
-            text
-        }
-    }, (error, response, body) => {
-        if (error) {
-            throw Error(error);
-        }
+            resolve(response);
+        })
     });
 }
