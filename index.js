@@ -4,11 +4,12 @@ const wol = require('node-wol');
 
 const SERVER_HOST = 'http://192.168.0.2:3210';
 const PC_MAC_ADDRESS = '50-E5-49-EF-98-39';
-const ROOT_DIR = 'C:/Users/ben/Projects/cuddly-palm-tree';
-const PROCESSING_FOLDER = `${ROOT_DIR}/temp/ready`;
-const DEST_FOLDER = `${ROOT_DIR}/temp/done`;
+const ROOT_DIR = 'P:';
+const PROCESSING_FOLDER = `${ROOT_DIR}/Converting/TV/`;
+const DEST_FOLDER = `${ROOT_DIR}/Indexing/`;
 
-getFilesToProcess()
+wakeUpPC()
+    .then(getFilesToProcess)
     .then(sendProcessRequest)
     .then(response => {
         const queueId = response.body.id;
@@ -39,15 +40,46 @@ function getQueueStatus(id) {
     });
 }
 
-function wakeUpServer(file) {
+function wakeUpPC() {
     return new Promise((resolve, reject) => {
         console.info('Waking up PC');
 
-        wol.wake(PC_MAC_ADDRESS, function(error) {
+        wol.wake(PC_MAC_ADDRESS, {
+            address: '192.168.0.2',
+        }, function(error) {
             if (error) {
                 reject(error);
             } else {
-                resolve();
+                console.info('PC is waking up...');
+
+                let tries = 0;
+                
+                function checkIfAwake() {
+                    request.get(`${SERVER_HOST}`, (error, response, body) => {
+                        if (error) {
+                            reject(error);
+                        }
+
+                        tries++;
+
+                        console.log('Tries', tries);
+                        console.log('Status Code:', response.statusCode);
+
+                        if (tries > 5) {
+                            reject('PC failed to wake up');
+                            return;
+                        }
+
+                        if (response.statusCode === 200) {
+                            resolve();
+                            return;
+                        }
+
+                        setTimeout(checkIfAwake, tries * 4000);
+                    });
+                }
+
+                checkIfAwake();
             }
         });
     });
@@ -55,7 +87,7 @@ function wakeUpServer(file) {
 
 function getFilesToProcess() {
     return new Promise((resolve, reject) => {
-        glob(`${PROCESSING_FOLDER}/**/*`, (error, files) => {
+        glob(`${PROCESSING_FOLDER}/**/*.@(mkv|mp4|avi)`, { nodir: true }, (error, files) => {
             if (error) {
                 reject(error);
             } else {
